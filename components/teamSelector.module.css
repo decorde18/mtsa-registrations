@@ -4,3 +4,20 @@
   justify-content: center;
   gap: 2rem;
 }
+@media (max-width: 768px) {
+  .div select {
+    width: 65%;
+    font-size: 1.2rem; /* Reduce text size */
+  }
+  .div label {
+    font-size: 1.2rem; /* Reduce text size */
+  }
+  .div {
+    width: 100%;
+    flex-direction: column; /* Stack team and roster selector */
+    gap: var(--padding-small);
+    align-items: center;
+    padding: var(--padding-small);
+    font-size: 1.2rem; /* Reduce text size */
+  }
+}

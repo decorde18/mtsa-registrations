@@ -113,13 +113,26 @@
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .header {
-    /* Keep the stacked layout */
-  }
-
   .logoContainer {
-    flex-direction: column;
-    margin-bottom: var(--padding-medium); /* Increase spacing */
+    width: 100%;
+    justify-content: center;
+    margin-bottom: var(--padding-small);
+  }
+  .logoContainer img {
+    height: var(--logo-height-small);
+    width: var(--logo-width-small);
+    margin-right: var(--padding-small);
+  }
+  .loginButton,
+  .logoutButton {
+    display: none;
+  }
+  .header {
+    flex-direction: column; /* Stack elements */
+    padding: var(--padding-small);
+  }
+  .title {
+    font-size: 1.5rem; /* Shrink title */
   }
 
   .controls {
@@ -129,5 +142,20 @@
 
   .selectWrapper {
     max-width: none; /* Allow full width on smaller screens */
+  }
+  .controls {
+    flex-direction: column; /* Stack select fields */
+    width: 100%;
+    gap: var(--padding-small);
+  }
+
+  .selectWrapper {
+    width: 90%; /* Make select fields smaller */
+    max-width: 300px;
+  }
+
+  .select {
+    font-size: 1.2rem; /* Reduce text size */
+    padding: var(--padding-small);
   }
 }
