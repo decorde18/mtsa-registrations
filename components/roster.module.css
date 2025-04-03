@@ -1,0 +1,75 @@
+.roster_container {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.roster_header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.logo {
+  width: 8rem;
+  height: auto;
+}
+
+.team_info {
+  text-align: center;
+}
+
+.team_info h1 {
+  margin: 0;
+  font-size: 2.4rem;
+}
+
+.roster_table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.roster_table th,
+.roster_table td {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem;
+}
+
+.roster_table th {
+  background-color: var(--color-border);
+  font-weight: bold;
+}
+
+@media print {
+  .roster_container {
+    box-shadow: none;
+    border: none;
+  }
+
+  .roster_table th,
+  .roster_table td {
+    border: 1px solid var(--color-border);
+  }
+}
+.print_button {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 1rem 1.5rem;
+  font-size: 1.6rem;
+  cursor: pointer;
+  margin-bottom: 1rem;
+  border-radius: 0.5rem;
+}
+
+.print_button:hover {
+  background-color: var(--secondary);
+}
+
+@media print {
+  .print_button {
+    display: none;
+  }
+}

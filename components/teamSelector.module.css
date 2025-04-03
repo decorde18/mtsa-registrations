@@ -1,0 +1,6 @@
+.div {
+  padding: 2.5rem;
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+}
