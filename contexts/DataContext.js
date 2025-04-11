@@ -62,6 +62,7 @@ export function DataProvider({ children }) {
       if (!response.ok) throw new Error("Failed to create record");
       const createdRecord = await response.json();
       setState((prev) => [...prev, createdRecord]);
+      return createdRecord; // Return the created record for further use
     } catch (error) {
       console.error("Error creating record:", error);
     }
@@ -82,6 +83,7 @@ export function DataProvider({ children }) {
             updatedDataArray.find((upd) => upd.id === record.id) || record
         )
       );
+      return updatedDataArray; // Return the updated records for further use
     } catch (error) {
       console.error("Error updating records:", error);
     }
@@ -110,14 +112,21 @@ export function DataProvider({ children }) {
         divisions,
         seasons,
         currentSeason,
-        setCurrentSeason,
         teams,
         leagues,
         missingPlayers,
+
         loading,
+
         createRecord,
         updateRecord,
         deleteRecord,
+
+        setCurrentSeason,
+        setPlayers,
+        setMtsaPlayers,
+        setTnsoccerPlayerSeasons,
+        setMissingPlayers,
       }}
     >
       {children}

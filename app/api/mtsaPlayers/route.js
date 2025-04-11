@@ -33,7 +33,7 @@ export async function POST(req) {
 }
 export async function GET(req) {
   try {
-    const [rows] = await pool.query("SELECT * FROM mtsa_players");
+    const [rows] = await pool.query("SELECT * FROM mtsa_players_view");
 
     return NextResponse.json({ data: rows });
   } catch (error) {
