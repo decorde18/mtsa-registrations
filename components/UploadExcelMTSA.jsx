@@ -49,11 +49,7 @@ function UploadExcelMTSA({
     const reader = new FileReader();
 
     reader.onload = (e) => {
-      const workbook = XLSX.read(e.target.result, {
-        type: "array",
-        cellText: true,
-        cellDates: false,
-      });
+      const workbook = XLSX.read(e.target.result, { type: "array" });
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
@@ -97,7 +93,7 @@ function UploadExcelMTSA({
         if (player[key] !== match[key]) changedFields[key] = player[key];
       });
 
-      if (Object.keys(changedFields).length) {
+      if (Object.keys(changedFields).length > 0) {
         updates.push({ id: match.id, ...changedFields });
       }
 
@@ -115,7 +111,10 @@ function UploadExcelMTSA({
       if (!uniqueIds.has(player.unique_id)) {
         uniqueIds.add(player.unique_id);
         playersToCheck.push({ ...player, mtsa });
-        if (!existingPlayers.some((p) => p.unique_id === player.unique_id)) {
+        const exists = existingPlayers.some(
+          (p) => p.unique_id === player.unique_id
+        );
+        if (!exists) {
           newPlayers.push(player);
         }
       }
@@ -127,17 +126,17 @@ function UploadExcelMTSA({
       toast.success(`${newPlayers.length} player(s) added`);
     }
 
-    // Update existing players
+    // Update players
     const updated = findUpdatedPlayers(playersToCheck);
     if (updated.length > 0) {
       await updatePlayers(updated);
       toast.success(`${updated.length} player(s) updated`);
     }
 
-    // Add to MTSA
+    // Add MTSA entries
     let skippedCount = 0;
     let createdCount = 0;
-    let attemptedCount = uploads.length;
+    const attemptedCount = uploads.length;
 
     const newMtsa = uploads
       .map(({ mtsa, unique_id }) => {
@@ -148,10 +147,17 @@ function UploadExcelMTSA({
         }
 
         const division = divisions.find(
-          (d) => d.mtsa_name === mtsa.division_name?.trim()
+          (d) =>
+            d.mtsa_name?.trim().toLowerCase() ===
+            mtsa.division_name?.trim().toLowerCase()
         );
-        const team = teams.find((t) => t.name === mtsa.team_name?.trim());
-        if (!division || !team || !season) {
+        const team = teams.find(
+          (t) =>
+            t.name?.trim().toLowerCase() ===
+            mtsa.team_name?.trim().toLowerCase()
+        );
+
+        if (!division || !team || !season?.id) {
           skippedCount++;
           return null;
         }
@@ -163,6 +169,7 @@ function UploadExcelMTSA({
             mp.division_id === division.id &&
             mp.season_id === season.id
         );
+
         if (alreadyExists) {
           skippedCount++;
           return null;
@@ -171,7 +178,9 @@ function UploadExcelMTSA({
         delete mtsa.division_name;
         delete mtsa.program_name;
         delete mtsa.team_name;
+
         createdCount++;
+
         return {
           ...mtsa,
           player_id: player.id,
@@ -185,7 +194,7 @@ function UploadExcelMTSA({
 
     if (newMtsa.length > 0) {
       await createMtsaPlayers(newMtsa);
-      toast(
+      toast.success(
         `Attempted: ${attemptedCount}, Added: ${createdCount}, Skipped: ${skippedCount}`
       );
     } else {
@@ -217,7 +226,7 @@ function UploadExcelMTSA({
 
       {uploads.length > 0 && (
         <div>
-          <h2>Preview</h2>
+          <h2>Preview Loaded Data</h2>
           <button onClick={handleSubmit}>Submit to Server</button>
         </div>
       )}
