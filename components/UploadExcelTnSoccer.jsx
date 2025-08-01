@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { useDropzone } from "react-dropzone";
-import { addUniqueId, convertExcelDateTimeToMySQL } from "@/util/functions";
+import { addUniqueId, convertExcelDateTimeToMySQL } from "@/utils/functions";
 import { useCrud } from "@/hooks/useCrud";
 import toast, { Toaster } from "react-hot-toast";
+import { useDataContext } from "@/contexts/DataContext";
 
 const headerMap = {
   PlayerID: "player_id",
@@ -27,7 +28,24 @@ const headerMapTnsoccer = {
   "Team Name": "team_name",
 };
 
-function UploadExcelTnSoccer({ existingPlayers, tnPlayers, season }) {
+function UploadExcelTnSoccer() {
+  // function UploadExcelTnSoccer({ existingPlayers, tnPlayers, season }) {
+  const {
+    players: existingPlayers,
+    mtsaPlayers,
+    tnsoccerPlayerSeasons: tnPlayers,
+    divisions,
+    loadedSeasons: seasons,
+    currentSeason: season,
+    teams,
+    leagues,
+    missingPlayers,
+
+    createRecord,
+    updateRecord,
+    deleteRecord,
+  } = useDataContext();
+  console.log(tnPlayers, season);
   const { create: createPlayers, update: updatePlayers } = useCrud("players");
   const { create: createTnSoccerPlayers } = useCrud("tnsoccerPlayerSeasons");
 

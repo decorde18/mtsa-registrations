@@ -1,139 +1,214 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect } from "react";
-import Spinner from "@/components/Spinner"; // Import a spinner component for loading
+import Spinner from "@/components/Spinner";
 
 const DataContext = createContext();
 
+const ENDPOINTS = {
+  players: "/api/players",
+  mtsaPlayers: "/api/mtsaPlayers",
+  tnsoccerPlayerSeasons: "/api/tnsoccerPlayerSeasons",
+  divisions: "/api/divisions",
+  seasons: "/api/seasons",
+  teams: "/api/teams",
+  leagues: "/api/leagues",
+  missingPlayers: "/api/missingPlayers",
+};
+
 export function DataProvider({ children }) {
-  const [players, setPlayers] = useState([]);
-  const [mtsaPlayers, setMtsaPlayers] = useState([]);
-  const [tnsoccerPlayerSeasons, setTnsoccerPlayerSeasons] = useState([]);
-  const [divisions, setDivisions] = useState([]);
-  const [seasons, setSeasons] = useState([]);
-  const [currentSeason, setCurrentSeason] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [leagues, setLeagues] = useState([]);
-  const [missingPlayers, setMissingPlayers] = useState([]);
+  const [data, setData] = useState({
+    players: [],
+    mtsaPlayers: [],
+    tnsoccerPlayerSeasons: [],
+    divisions: [],
+    seasons: [],
+    teams: [],
+    leagues: [],
+    missingPlayers: [],
+  });
+
+  const [currentSeason, setCurrentSeason] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    async function fetchData(endpoint, setState) {
-      try {
-        const response = await fetch(endpoint);
-        if (!response.ok) throw new Error(`Failed to fetch ${endpoint}`);
-        const result = await response.json();
-        setState(result.data || []);
-      } catch (error) {
-        console.error(`Error fetching ${endpoint}:`, error);
+  const useMockData =
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
+
+  const fetchData = async (endpoint, key) => {
+    try {
+      if (useMockData) {
+        const mockModule = await import("@/mock/data.js");
+        const mockData = mockModule.default;
+        console.log(`Using mock data for ${key}:`, mockData[key]?.length || 0);
+        return mockData[key] || [];
       }
-    }
 
-    async function loadAllData() {
-      setLoading(true);
-      await Promise.all([
-        fetchData("/api/players", setPlayers),
-        fetchData("/api/mtsaPlayers", setMtsaPlayers),
-        fetchData("/api/tnsoccerPlayerSeasons", setTnsoccerPlayerSeasons),
-        fetchData("/api/divisions", setDivisions),
-        fetchData("/api/seasons", setSeasons),
-        fetchData("/api/teams", setTeams),
-        fetchData("/api/leagues", setLeagues),
-        fetchData("/api/missingPlayers", setMissingPlayers),
-      ]);
+      const response = await fetch(endpoint, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const dataArray = result.data || result || [];
+      return Array.isArray(dataArray) ? dataArray : [];
+    } catch (error) {
+      console.error(`Error fetching ${key} from ${endpoint}:`, error);
+      setError((prev) => ({
+        ...prev,
+        [key]: `Failed to fetch ${key}: ${error.message}`,
+      }));
+      return [];
+    }
+  };
+
+  const loadAllData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // console.log("Starting data load...");
+
+      const results = await Promise.allSettled(
+        Object.entries(ENDPOINTS).map(async ([key, endpoint]) => {
+          const result = await fetchData(endpoint, key);
+          return [key, result];
+        })
+      );
+
+      const newData = { ...data };
+      const errors = {};
+
+      results.forEach((result, index) => {
+        const [key] = Object.entries(ENDPOINTS)[index];
+
+        if (result.status === "fulfilled") {
+          const [dataKey, value] = result.value;
+          newData[dataKey] = value;
+        } else {
+          console.error(`Failed to load ${key}:`, result.reason);
+          errors[key] = result.reason.message;
+        }
+      });
+
+      setData(newData);
+
+      // Set current season immediately after data is loaded
+      if (newData.seasons?.length && newData.leagues?.length) {
+        const current = newData.seasons.find(
+          (season) => season.id === newData.leagues[0]?.recent_season
+        );
+
+        setCurrentSeason(current);
+      }
+
+      if (Object.keys(errors).length > 0) {
+        setError(errors);
+      }
+
+      // console.log("Data load complete:", newData);
+    } catch (error) {
+      console.error("Error loading data:", error);
+      setError({ general: "Failed to load data" });
+    } finally {
       setLoading(false);
     }
+  };
 
+  // Load data on mount
+  useEffect(() => {
     loadAllData();
   }, []);
 
-  useEffect(() => {
-    if (!seasons.length || !leagues.length) return;
-    setCurrentSeason(seasons.find((sea) => sea.id === leagues[0].id));
-  }, [leagues, seasons]);
-
-  async function createRecord(endpoint, newRecord, setState) {
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newRecord),
-      });
-      if (!response.ok) throw new Error("Failed to create record");
-      const createdRecord = await response.json();
-      setState((prev) => [...prev, createdRecord]);
-      return createdRecord; // Return the created record for further use
-    } catch (error) {
-      console.error("Error creating record:", error);
-    }
-  }
-
-  async function updateRecord(endpoint, updatedRecords, setState) {
-    try {
-      const response = await fetch(endpoint, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ records: updatedRecords }),
-      });
-      if (!response.ok) throw new Error("Failed to update records");
-      const { updatedRecords: updatedDataArray } = await response.json();
-      setState((prev) =>
-        prev.map(
-          (record) =>
-            updatedDataArray.find((upd) => upd.id === record.id) || record
-        )
-      );
-      return updatedDataArray; // Return the updated records for further use
-    } catch (error) {
-      console.error("Error updating records:", error);
-    }
-  }
-
-  async function deleteRecord(endpoint, id, setState) {
-    try {
-      const response = await fetch(`${endpoint}/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Failed to delete record");
-      setState((prev) => prev.filter((record) => record.id !== id));
-    } catch (error) {
-      console.error("Error deleting record:", error);
-    }
-  }
+  // Setter functions for individual data types
+  const setters = {
+    setPlayers: (value) =>
+      setData((prev) => ({
+        ...prev,
+        players: typeof value === "function" ? value(prev.players) : value,
+      })),
+    setMtsaPlayers: (value) =>
+      setData((prev) => ({
+        ...prev,
+        mtsaPlayers:
+          typeof value === "function" ? value(prev.mtsaPlayers) : value,
+      })),
+    setTnsoccerPlayerSeasons: (value) =>
+      setData((prev) => ({
+        ...prev,
+        tnsoccerPlayerSeasons:
+          typeof value === "function"
+            ? value(prev.tnsoccerPlayerSeasons)
+            : value,
+      })),
+    setMissingPlayers: (value) =>
+      setData((prev) => ({
+        ...prev,
+        missingPlayers:
+          typeof value === "function" ? value(prev.missingPlayers) : value,
+      })),
+    setDivisions: (value) =>
+      setData((prev) => ({
+        ...prev,
+        divisions: typeof value === "function" ? value(prev.divisions) : value,
+      })),
+    setSeasons: (value) =>
+      setData((prev) => ({
+        ...prev,
+        seasons: typeof value === "function" ? value(prev.seasons) : value,
+      })),
+    setTeams: (value) =>
+      setData((prev) => ({
+        ...prev,
+        teams: typeof value === "function" ? value(prev.teams) : value,
+      })),
+    setLeagues: (value) =>
+      setData((prev) => ({
+        ...prev,
+        leagues: typeof value === "function" ? value(prev.leagues) : value,
+      })),
+  };
 
   if (loading) {
-    return <Spinner />; // Show Spinner while loading is true
+    return <Spinner />;
   }
 
+  // console.log(data);
   return (
     <DataContext.Provider
       value={{
-        players,
-        mtsaPlayers,
-        tnsoccerPlayerSeasons,
-        divisions,
-        seasons,
+        // Data
+        ...data,
         currentSeason,
-        teams,
-        leagues,
-        missingPlayers,
 
+        // State
         loading,
+        error,
 
-        createRecord,
-        updateRecord,
-        deleteRecord,
-
+        // Setters
+        ...setters,
         setCurrentSeason,
-        setPlayers,
-        setMtsaPlayers,
-        setTnsoccerPlayerSeasons,
-        setMissingPlayers,
+
+        // Utilities
+        refetch: loadAllData,
       }}
     >
       {children}
     </DataContext.Provider>
   );
 }
-
 export function useDataContext() {
-  return useContext(DataContext);
+  const context = useContext(DataContext);
+  if (!context) {
+    throw new Error("useDataContext must be used within a DataProvider");
+  }
+  return context;
 }

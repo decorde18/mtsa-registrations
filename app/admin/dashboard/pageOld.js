@@ -2,7 +2,7 @@
 
 import UploadExcelTnSoccer from "@/components/UploadExcelTnSoccer";
 import UploadExcelMTSA from "@/components/UploadExcelMTSA";
-import { addUniqueId } from "@/util/functions";
+import { addUniqueId } from "@/utils/functions";
 
 import Spinner from "@/components/Spinner";
 import { useDataContext } from "@/contexts/DataContext";

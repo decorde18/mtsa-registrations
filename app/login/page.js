@@ -3,8 +3,30 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import styles from "./Login.module.css";
 import { useAuth } from "@/contexts/AuthContext";
+import styled from "styled-components";
+import Button from "@/styles/components/Button";
+
+const LoginContainer = styled.div`
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem;
+  border: 1px solid ${({ theme }) => theme.colors.primary};
+  border-radius: 0.5rem;
+  background-color: ${({ theme }) => theme.colors.background};
+`;
+
+const Title = styled.h1`
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 2.4rem;
+  color: var(--text-color);
+`;
+const FormGroup = styled.div`
+  display: flex;
+  gap: ${({ theme }) => theme.spacing.paddingMedium};
+  margin-bottom: 1.5rem;
+`;
 
 function Login() {
   const router = useRouter();
@@ -27,7 +49,7 @@ function Login() {
       // but here we force a redirection based on the response.
       const data = await res.json();
       if (data.user.role === "admin") {
-        router.push("/admin/dashboard");
+        router.push("/admin/adminDashboard");
       } else {
         router.push("/user/home");
       }
@@ -41,30 +63,28 @@ function Login() {
   };
 
   return (
-    <div className={styles.loginContainer}>
-      <h1 className={styles.title}>Login</h1>
-      <form onSubmit={handleLogin} className={styles.form}>
-        <div className={styles.formGroup}>
-          <label className={styles.label}>Username: </label>
+    <LoginContainer>
+      <Title>Login</Title>
+      <form onSubmit={handleLogin}>
+        <FormGroup>
+          <label>Username: </label>
           <input
             type='text'
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className={styles.input}
           />
-        </div>
-        <div className={styles.formGroup}>
-          <label className={styles.label}>Password: </label>
+        </FormGroup>
+        <FormGroup>
+          <label>Password: </label>
           <input
             type='password'
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={styles.input}
           />
-        </div>
-        <button className={styles.button}>LOGIN</button>
+        </FormGroup>
+        <Button>LOGIN</Button>
       </form>
-    </div>
+    </LoginContainer>
   );
 }
 

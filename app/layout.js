@@ -1,9 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import styles from "./page.module.css";
+
 import Header from "@/components/Header";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { DataProvider } from "@/contexts/DataContext";
+import ClientProviders from "@/contexts/ClientProviders";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,22 +22,20 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang='en'>
-      <AuthProvider>
-        <body className={`${geistSans.variable} ${geistMono.variable}`}>
-          <DataProvider>
-            <header>
-              <Header />
-            </header>
-            <main>{children}</main>
-            <footer>
-              <p>
-                &copy; {new Date().getFullYear()}
-                <span lang='en'> Middle Tennessee Soccer Association</span>
-              </p>
-            </footer>
-          </DataProvider>
-        </body>
-      </AuthProvider>
+      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <ClientProviders>
+          <header>
+            <Header />
+          </header>
+          <main>{children}</main>
+          <footer>
+            <p>
+              &copy; {new Date().getFullYear()}
+              <span lang='en'> Middle Tennessee Soccer Association</span>
+            </p>
+          </footer>
+        </ClientProviders>
+      </body>
     </html>
   );
 }

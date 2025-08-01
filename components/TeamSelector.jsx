@@ -1,44 +1,82 @@
 "use client";
 
-import { getTeams } from "@/lib/actions";
+import { useDataContext } from "@/contexts/DataContext";
+
 import { useEffect, useState } from "react";
-import styles from "./teamSelector.module.css";
+import styled from "styled-components";
+
+const Div = styled.div`
+  display: flex;
+  padding: 2.5rem;
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  @media (max-width: 768px) {
+    width: 100%;
+    flex-direction: column; /* Stack team and roster selector */
+    gap: var(--padding-small);
+    align-items: center;
+    padding: var(--padding-small);
+    font-size: 1.2rem; /* Reduce text size */
+  }
+`;
 
 export default function TeamSelector({ onTeamSelect }) {
-  const [teams, setTeams] = useState([]);
-  const [divisions, setDivisions] = useState([]);
-  const [selectedDivision, setSelectedDivision] = useState("");
+  const { divisions, teams, currentSeason, mtsaPlayers } = useDataContext();
+
+  const [filteredDivisions, setFilteredDivisions] = useState([]);
+  const [selectedDivision, setSelectedDivision] = useState();
   const [filteredTeams, setFilteredTeams] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState("");
 
   useEffect(() => {
-    getTeams().then((data) => {
-      setTeams(data);
-      setDivisions([...new Set(data.map((team) => team.division_name))]);
-    });
-  }, []);
+    if (currentSeason && mtsaPlayers.length > 0) {
+      const filteredSeasonPlayers = mtsaPlayers.filter(
+        (player) => player.season_id === currentSeason.id
+      );
+      const uniqueDivisions = [
+        ...new Set(filteredSeasonPlayers.map((player) => player.division_id)),
+      ];
 
+      setFilteredDivisions(
+        uniqueDivisions
+          .filter((division) => division !== null)
+          .map((division) => divisions.find((d) => d.id === division))
+      );
+    }
+  }, [currentSeason, mtsaPlayers]);
   useEffect(() => {
     if (selectedDivision) {
+      const filteredSeasonPlayers = mtsaPlayers
+        .filter((player) => player.season_id === currentSeason.id)
+        .filter((player) => player.division_id == selectedDivision);
+      const uniqueTeams = [
+        ...new Set(filteredSeasonPlayers.map((player) => player.team_id)),
+      ];
+
       setFilteredTeams(
-        teams.filter((team) => team.division_name === selectedDivision)
+        uniqueTeams
+          .filter((team) => team !== null)
+          .map((team) => teams.find((t) => t.id === team))
       );
-      setSelectedTeam("");
+
+      setSelectedTeam();
+      onTeamSelect("");
     }
-  }, [selectedDivision, teams]);
+  }, [currentSeason, selectedDivision, teams]);
 
   return (
     <div className='noprint'>
-      <div className={styles.div}>
+      <Div>
         <label>Select Division:</label>
         <select
           value={selectedDivision}
           onChange={(e) => setSelectedDivision(e.target.value)}
         >
           <option value=''>-- Select Division --</option>
-          {divisions.map((division) => (
-            <option key={division} value={division}>
-              {division}
+          {filteredDivisions.map((division) => (
+            <option key={division.id} value={division.id}>
+              {division.mtsa_name}
             </option>
           ))}
         </select>
@@ -49,10 +87,14 @@ export default function TeamSelector({ onTeamSelect }) {
             <select
               value={selectedTeam}
               onChange={(e) => {
-                const selected = filteredTeams.find(
-                  (team) =>
-                    `${team.team_id}-${team.division_id}` === e.target.value
-                );
+                const selected = {
+                  ...filteredTeams.find(
+                    (team) => `${team.id}-${selectedDivision}` == e.target.value
+                  ),
+                  division_id: selectedDivision,
+                  division_name: divisions.find((d) => d.id == selectedDivision)
+                    .mtsa_name,
+                };
                 setSelectedTeam(e.target.value);
                 onTeamSelect(selected);
               }}
@@ -60,16 +102,17 @@ export default function TeamSelector({ onTeamSelect }) {
               <option value=''>-- Select Team --</option>
               {filteredTeams.map((team) => (
                 <option
-                  key={`${team.team_id}-${team.division_id}`}
-                  value={`${team.team_id}-${team.division_id}`}
+                  key={`${team.id}-${selectedDivision}`}
+                  value={`${team.id}-${selectedDivision}`}
                 >
-                  {team.team_name} ({team.division_name})
+                  {team.name} (
+                  {divisions.find((d) => d.id == selectedDivision).mtsa_name})
                 </option>
               ))}
             </select>
           </>
         )}
-      </div>
+      </Div>
     </div>
   );
 }

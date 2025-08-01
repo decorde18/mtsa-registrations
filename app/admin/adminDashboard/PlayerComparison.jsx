@@ -1,7 +1,16 @@
+"use client";
+
+import styled from "styled-components";
+import { Users } from "lucide-react";
+import { ContentCard, SectionTitle } from "@/styles/components/Card";
+import Button from "@/styles/components/Button";
+import { useDataContext } from "@/contexts/DataContext";
 import { excelDateToJSDate } from "@/utils/functions";
 import ExcelJS from "exceljs";
 
-function MissingPlayers({ missingPlayers, currentSeason, leagues }) {
+function PlayerComparison() {
+  const { missingPlayers, currentSeason } = useDataContext();
+  console.log(missingPlayers);
   async function createAffinityWorkbook(filteredData) {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Filtered New Records");
@@ -59,9 +68,12 @@ function MissingPlayers({ missingPlayers, currentSeason, leagues }) {
     // Map filteredData to worksheet rows
     filteredData.forEach((record) => {
       const row = {
-        sidCode: leagues[0].sid_code, // Assuming leagues[0].sid_code is accessible
-        season: currentSeason.tnsoccer_season_name, // Assuming currentSeason.tnsoccer_season_name is accessible
-        season_id: currentSeason.tnsoccer_season_id, // Assuming currentSeason.tnsoccer_season_id is accessible
+        // sidCode: leagues[0].sid_code, // Assuming leagues[0].sid_code is accessible
+        // season: currentSeason.tnsoccer_season_name, // Assuming currentSeason.tnsoccer_season_name is accessible
+        // season_id: currentSeason.tnsoccer_season_id, // Assuming currentSeason.tnsoccer_season_id is accessible
+        sidCode: record.sid_code,
+        season: record.season,
+        season_id: record.tnsoccer_season_id,
         last_name: record.last_name,
         first_name: record.first_name,
         gender: record.gender,
@@ -86,12 +98,17 @@ function MissingPlayers({ missingPlayers, currentSeason, leagues }) {
     link.download = "filtered_new_records.xlsx";
     link.click();
   }
-
   return (
-    <>
+    <ContentCard>
+      <SectionTitle>
+        <Users />
+        Player Comparison
+      </SectionTitle>
       <button onClick={() => createAffinityWorkbook(missingPlayers)}>
-        Click to Add
+        <Users />
+        Run Comparison Spreadsheet
       </button>
+
       <table>
         <thead>
           <tr>
@@ -112,8 +129,8 @@ function MissingPlayers({ missingPlayers, currentSeason, leagues }) {
           ))}
         </tbody>
       </table>
-    </>
+    </ContentCard>
   );
 }
 
-export default MissingPlayers;
+export default PlayerComparison;

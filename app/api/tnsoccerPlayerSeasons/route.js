@@ -3,23 +3,28 @@ import pool from "@/lib/db"; // Assuming pool is your MySQL connection
 
 export async function POST(req) {
   try {
-    // Parse JSON data from the request body
-    const players = await req.json();
-    // Validate that "players" is an array of objects
-    if (!players || !Array.isArray(players) || players.length === 0) {
+    const data = await req.json();
+
+    // Normalize input to always be an array
+    const players = Array.isArray(data) ? data : [data];
+
+    // Validate the array
+    if (players.length === 0 || typeof players[0] !== "object") {
       return NextResponse.json(
-        { error: "Invalid data format. 'players' array is required." },
+        {
+          error: "Invalid data format. Must be an object or array of objects.",
+        },
         { status: 400 }
       );
     }
-    // Prepare dynamic MySQL query for inserting the data
-    const fields = Object.keys(players[0]).join(", "); // "name, age, team"
-    const placeholders = players.map(() => "(?)").join(", "); // "(?), (?)"
-    const values = players.map((player) => Object.values(player)); // [[John's values], [Jane's values]]
+
+    const fields = Object.keys(players[0]).join(", ");
+    const placeholders = players.map(() => "(?)").join(", ");
+    const values = players.map((player) => Object.values(player));
 
     const query = `INSERT INTO tnsoccer_player_seasons (${fields}) VALUES ?`;
-    await pool.query(query, [values]); // ✅ Bulk insert
-    // Respond with success
+    await pool.query(query, [values]);
+
     return NextResponse.json({
       message: "Players data inserted successfully.",
     });
@@ -31,6 +36,7 @@ export async function POST(req) {
     );
   }
 }
+
 export async function GET(req) {
   try {
     const [rows] = await pool.query(

@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { useDropzone } from "react-dropzone";
-import { addUniqueId, convertExcelDateTimeToMySQL } from "@/util/functions";
+import { addUniqueId, convertExcelDateTimeToMySQL } from "@/utils/functions";
 import { useCrud } from "@/hooks/useCrud";
 import toast, { Toaster } from "react-hot-toast";
 

@@ -4,7 +4,10 @@ import pool from "@/lib/db"; // Assuming pool is your MySQL connection
 export async function POST(req) {
   try {
     // Parse JSON data from the request body
-    const players = await req.json();
+    const data = await req.json();
+    // Normalize input to always be an array
+    const players = Array.isArray(data) ? data : [data];
+
     // Validate that "players" is an array of objects
     if (!players || !Array.isArray(players) || players.length === 0) {
       return NextResponse.json(
