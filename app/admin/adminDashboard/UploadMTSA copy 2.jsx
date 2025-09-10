@@ -346,13 +346,6 @@ const UploadMTSA = () => {
       setIsProcessing(true);
       toast.loading("Processing records...", { id: "submit-processing" });
 
-      // Helper function to strip unique_id from player data
-      const stripUniqueId = (playerData) => {
-        const { unique_id, mtsa, ...cleanData } = playerData;
-        return cleanData;
-      };
-
-      // Build lookup maps
       const playerMap = buildLookupMap(players, (p) => p.unique_id);
       const divisionMap = buildLookupMap(divisions, (d) =>
         normalize(d.mtsa_name)
@@ -360,24 +353,39 @@ const UploadMTSA = () => {
       const teamMap = buildLookupMap(teams, (t) => normalize(t.name));
       const seasonMap = buildLookupMap(seasons, (s) => normalize(s.name));
 
-      // Step 1: Organize players by what needs to happen
-      const uniqueIds = new Set();
-      const newPlayersToCreate = [];
-      const playersToUpdate = [];
-      const allMtsaData = []; // Store all MTSA data with unique_id for later
+      const newPlayers = [];
+      const updates = [];
       const divisionsToCreate = new Set();
       const teamsToCreate = new Set();
 
+      // STEP 1: Player create/update
       for (const record of uploads) {
-        const { unique_id, mtsa } = record;
+        const { unique_id } = record;
+        const existing = playerMap.get(unique_id);
+        if (!existing) {
+          const { mtsa, unique_id, ...playerData } = record;
+          newPlayers.push(playerData);
+        } else {
+          const changed = getChangedPlayerFields(existing, record);
+          if (Object.keys(changed).length > 0) {
+            updates.push({ id: existing.id, ...changed });
+          }
+        }
+      }
 
-        // Store MTSA data for later processing
-        allMtsaData.push({
-          unique_id,
-          mtsa,
-        });
+      let createdPlayers = [];
+      for (const player of newPlayers) {
+        const res = await createRecord("players", player);
+        const newPlayer = res.data || { id: res.id, ...player };
+        playerMap.set(newPlayer.unique_id, newPlayer);
+        createdPlayers.push(newPlayer);
+      }
 
-        // Track divisions and teams that need creation
+      if (updates.length) await updateRecords("players", updates);
+
+      // STEP 2: Resolve divisions & teams
+      for (const record of uploads) {
+        const { mtsa } = record;
         if (
           mtsa.division_name &&
           !divisionMap.has(normalize(mtsa.division_name))
@@ -387,243 +395,47 @@ const UploadMTSA = () => {
         if (mtsa.team_name && !teamMap.has(normalize(mtsa.team_name))) {
           teamsToCreate.add(mtsa.team_name);
         }
-
-        // Process players (dedupe by unique_id)
-        if (!uniqueIds.has(unique_id)) {
-          uniqueIds.add(unique_id);
-          const existingPlayer = playerMap.get(unique_id);
-
-          if (!existingPlayer) {
-            // New player - strip unique_id before adding to create list
-            newPlayersToCreate.push(stripUniqueId(record));
-          } else {
-            // Check if existing player needs updates
-            const changedFields = getChangedPlayerFields(
-              existingPlayer,
-              record
-            );
-            if (Object.keys(changedFields).length > 0) {
-              playersToUpdate.push({
-                id: existingPlayer.id,
-                ...changedFields,
-              });
-            }
-          }
-        }
       }
 
-      let createdPlayers = [];
-      let updatedPlayerMap = new Map();
-
-      // Step 2: Bulk create new players
-      if (newPlayersToCreate.length > 0) {
-        toast.loading(`Creating ${newPlayersToCreate.length} new players...`, {
-          id: "creating-players",
-        });
-
-        try {
-          // Try bulk insert first
-          const response = await fetch("/api/players", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(newPlayersToCreate),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-
-          // Since we need the IDs for MTSA records, fall back to individual creates
-          throw new Error("Falling back to individual creates to get IDs");
-        } catch (error) {
-          console.log(
-            "Using individual creates to get player IDs:",
-            error.message
-          );
-
-          // Create players individually to get their IDs
-          for (const playerData of newPlayersToCreate) {
-            try {
-              const result = await createRecord("players", playerData);
-              const createdPlayer = result.data || {
-                ...playerData,
-                id: result.id,
-              };
-              createdPlayers.push(createdPlayer);
-              // Update our local player map
-              playerMap.set(createdPlayer.unique_id, createdPlayer);
-            } catch (createError) {
-              console.error("Error creating individual player:", createError);
-              toast.error(
-                `Failed to create player: ${playerData.first_name} ${playerData.last_name}`
-              );
-            }
-          }
-
-          toast.success(`Created ${createdPlayers.length} new players`, {
-            id: "creating-players",
-          });
-        }
+      for (const name of divisionsToCreate) {
+        const res = await createRecord("divisions", { mtsa_name: name });
+        const div = res.data || { id: res.id, mtsa_name: name };
+        divisionMap.set(normalize(name), div);
       }
 
-      // Step 3: Bulk update existing players
-      if (playersToUpdate.length > 0) {
-        toast.loading(`Updating ${playersToUpdate.length} players...`, {
-          id: "updating-players",
-        });
-
-        try {
-          await updateRecords("players", playersToUpdate);
-
-          // Track updated players for mapping later
-          playersToUpdate.forEach((update) => {
-            updatedPlayerMap.set(update.id, update);
-          });
-
-          toast.success(`Updated ${playersToUpdate.length} players`, {
-            id: "updating-players",
-          });
-        } catch (error) {
-          console.error("Error updating players:", error);
-          toast.error("Failed to update some players", {
-            id: "updating-players",
-          });
-        }
+      for (const name of teamsToCreate) {
+        const res = await createRecord("teams", { name });
+        const team = res.data || { id: res.id, name };
+        teamMap.set(normalize(name), team);
       }
 
-      // Step 4: Create new divisions (bulk)
-      if (divisionsToCreate.size > 0) {
-        toast.loading(`Creating ${divisionsToCreate.size} new divisions...`, {
-          id: "creating-divisions",
-        });
+      // STEP 3: Resolve Season (from program_name)
+      // no-op: per-record season resolution now handled individually
+      // STEP 4: Process MTSA records
+      const mtsaCreates = [];
+      const mtsaUpdates = [];
 
-        const divisionsArray = Array.from(divisionsToCreate).map((name) => ({
-          mtsa_name: name,
-        }));
-
-        try {
-          // Try bulk create divisions
-          const response = await fetch("/api/divisions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(divisionsArray),
-          });
-
-          if (!response.ok) {
-            throw new Error("Bulk division create failed");
-          }
-
-          // If your API doesn't return created records, fall back to individual creates
-          throw new Error("Falling back to individual creates");
-        } catch (error) {
-          // Create divisions individually
-          for (const name of divisionsToCreate) {
-            try {
-              const result = await createRecord("divisions", {
-                mtsa_name: name,
-              });
-              const division = result.data || {
-                id: result.id,
-                mtsa_name: name,
-              };
-              divisionMap.set(normalize(name), division);
-            } catch (createError) {
-              console.error("Error creating division:", createError);
-              toast.error(`Failed to create division: ${name}`);
-            }
-          }
-        }
-
-        toast.success(`Created ${divisionsToCreate.size} new divisions`, {
-          id: "creating-divisions",
-        });
-      }
-
-      // Step 5: Create new teams (bulk)
-      if (teamsToCreate.size > 0) {
-        toast.loading(`Creating ${teamsToCreate.size} new teams...`, {
-          id: "creating-teams",
-        });
-
-        const teamsArray = Array.from(teamsToCreate).map((name) => ({
-          name,
-        }));
-
-        try {
-          // Try bulk create teams
-          const response = await fetch("/api/teams", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(teamsArray),
-          });
-
-          if (!response.ok) {
-            throw new Error("Bulk team create failed");
-          }
-
-          // If your API doesn't return created records, fall back to individual creates
-          throw new Error("Falling back to individual creates");
-        } catch (error) {
-          // Create teams individually
-          for (const name of teamsToCreate) {
-            try {
-              const result = await createRecord("teams", { name });
-              const team = result.data || { id: result.id, name };
-              teamMap.set(normalize(name), team);
-            } catch (createError) {
-              console.error("Error creating team:", createError);
-              toast.error(`Failed to create team: ${name}`);
-            }
-          }
-        }
-
-        toast.success(`Created ${teamsToCreate.size} new teams`, {
-          id: "creating-teams",
-        });
-      }
-
-      // Step 6: Process seasons and prepare MTSA records
-      const mtsaRecordsToCreate = [];
-      const mtsaRecordsToUpdate = [];
-
-      for (const { unique_id, mtsa } of allMtsaData) {
+      for (const { unique_id, mtsa } of uploads) {
         const player = playerMap.get(unique_id);
         const division = divisionMap.get(normalize(mtsa.division_name));
         const team = teamMap.get(normalize(mtsa.team_name));
-
-        // Resolve or create season per record
+        // Resolve season per record
         let season = null;
         if (mtsa.program_name) {
           const progKey = normalize(mtsa.program_name);
           if (!seasonMap.has(progKey)) {
-            try {
-              const newSeason = await resolveOrCreateSeason(
-                mtsa.program_name,
-                seasons,
-                createRecord
-              );
-              seasonMap.set(progKey, newSeason);
-            } catch (error) {
-              console.error("Error creating season:", error);
-              toast.error(`Failed to create season: ${mtsa.program_name}`);
-              continue;
-            }
+            const newSeason = await resolveOrCreateSeason(
+              mtsa.program_name,
+              seasons,
+              createRecord
+            );
+            seasonMap.set(progKey, newSeason);
           }
           season = seasonMap.get(progKey);
         }
 
-        if (!player || !division || !team || !season) {
-          console.warn(`Missing required data for MTSA record:`, {
-            player: !!player,
-            division: !!division,
-            team: !!team,
-            season: !!season,
-            unique_id,
-          });
-          continue;
-        }
+        if (!player || !division || !team || !season) continue;
 
-        // Check if MTSA record already exists
         const existingMtsa = mtsaPlayers.find(
           (mp) =>
             mp.player_id === player.id &&
@@ -632,7 +444,7 @@ const UploadMTSA = () => {
             mp.season_id === season.id
         );
 
-        const mtsaRecord = {
+        const base = {
           player_id: player.id,
           division_id: division.id,
           team_id: team.id,
@@ -650,102 +462,31 @@ const UploadMTSA = () => {
         };
 
         if (!existingMtsa) {
-          mtsaRecordsToCreate.push(mtsaRecord);
+          mtsaCreates.push(base);
         } else {
-          // Check what fields have changed
-          const changedFields = {};
-          for (const [key, value] of Object.entries(mtsaRecord)) {
-            if (value !== existingMtsa[key]) {
-              changedFields[key] = value;
+          const changed = {};
+          for (const key in base) {
+            if (base[key] !== existingMtsa[key]) {
+              changed[key] = base[key];
             }
           }
-
-          if (Object.keys(changedFields).length > 0) {
-            mtsaRecordsToUpdate.push({
-              id: existingMtsa.id,
-              ...changedFields,
-            });
+          if (Object.keys(changed).length > 0) {
+            mtsaUpdates.push({ id: existingMtsa.id, ...changed });
           }
         }
       }
 
-      // Step 7: Bulk create MTSA records
-      if (mtsaRecordsToCreate.length > 0) {
-        toast.loading(
-          `Creating ${mtsaRecordsToCreate.length} MTSA registrations...`,
-          {
-            id: "creating-mtsa",
-          }
-        );
+      for (const data of mtsaCreates) await createRecord("mtsaPlayers", data);
+      if (mtsaUpdates.length) await updateRecords("mtsaPlayers", mtsaUpdates);
 
-        try {
-          await createRecord("mtsaPlayers", mtsaRecordsToCreate);
-          toast.success(
-            `Created ${mtsaRecordsToCreate.length} MTSA registrations`,
-            {
-              id: "creating-mtsa",
-            }
-          );
-        } catch (batchError) {
-          console.warn(
-            "Batch MTSA insert failed, falling back to individual records..."
-          );
-
-          let successCount = 0;
-          for (const mtsaRecord of mtsaRecordsToCreate) {
-            try {
-              await createRecord("mtsaPlayers", mtsaRecord);
-              successCount++;
-            } catch (error) {
-              console.error("Failed to create individual MTSA record:", error);
-              toast.error(
-                `Failed to create MTSA registration for player ID: ${mtsaRecord.player_id}`
-              );
-            }
-          }
-
-          toast.success(`Created ${successCount} MTSA registrations`, {
-            id: "creating-mtsa",
-          });
-        }
-      }
-
-      // Step 8: Bulk update MTSA records
-      if (mtsaRecordsToUpdate.length > 0) {
-        toast.loading(
-          `Updating ${mtsaRecordsToUpdate.length} MTSA registrations...`,
-          {
-            id: "updating-mtsa",
-          }
-        );
-
-        try {
-          await updateRecords("mtsaPlayers", mtsaRecordsToUpdate);
-          toast.success(
-            `Updated ${mtsaRecordsToUpdate.length} MTSA registrations`,
-            {
-              id: "updating-mtsa",
-            }
-          );
-        } catch (error) {
-          console.error("Error updating MTSA records:", error);
-          toast.error("Failed to update some MTSA registrations", {
-            id: "updating-mtsa",
-          });
-        }
-      }
-
-      // Success - reset form
       setUploads([]);
       setPreviewStats(null);
-      toast.success("All MTSA records processed successfully!", {
+      toast.success("All records processed successfully!", {
         id: "submit-processing",
       });
-    } catch (error) {
-      console.error("MTSA submission error:", error);
-      toast.error(`Failed to process MTSA records: ${error.message}`, {
-        id: "submit-processing",
-      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Error processing records: " + err.message);
     } finally {
       setIsProcessing(false);
     }

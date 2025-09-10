@@ -2,10 +2,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useDataContext } from "@/contexts/DataContext";
 import styled from "styled-components";
-import Button from "@/styles/components/Button";
 
 const HeaderContainer = styled.header`
   display: flex;
@@ -30,6 +29,7 @@ const HeaderContainer = styled.header`
 const LogoContainer = styled.div`
   display: flex;
   align-items: center;
+  cursor: pointer;
   margin-bottom: ${({ theme }) => theme.spacing.paddingSmall};
   width: 30%;
 
@@ -74,10 +74,21 @@ const Controls = styled.div`
   }
 `;
 
-const SelectWrapper = styled.div`
+const StyledSelect = styled.select`
   flex-grow: 1;
   max-width: 400px;
   margin: 0;
+  padding: ${({ theme }) => theme.spacing.paddingSmall};
+  border-radius: ${({ theme }) => theme.borderRadius.default};
+  border: 2px solid ${({ theme }) => theme.colors.white};
+  background-color: ${({ theme }) => theme.colors.white};
+  color: ${({ theme }) => theme.colors.primary};
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: ${({ theme }) => theme.colors.secondary};
+  }
 
   @media (max-width: 768px) {
     width: 90%;
@@ -100,10 +111,12 @@ const Nav = styled.nav`
     margin: 0;
   }
 `;
-const Buttons = styled.div`
+
+const ButtonGroup = styled.div`
   display: flex;
   gap: ${({ theme }) => theme.spacing.paddingMedium};
 `;
+
 const AuthButton = styled.button`
   padding: ${({ theme }) => theme.spacing.paddingMedium};
   background-color: ${({ theme }) => theme.colors.white};
@@ -111,12 +124,18 @@ const AuthButton = styled.button`
   border: none;
   border-radius: ${({ theme }) => theme.borderRadius.default};
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
   font-size: 1.5rem;
+  font-weight: ${({ theme }) => theme.fontWeight.medium || "500"};
 
   &:hover {
     background-color: ${({ theme }) => theme.colors.secondary};
     color: ${({ theme }) => theme.colors.white};
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 
   @media (max-width: 768px) {
@@ -126,11 +145,12 @@ const AuthButton = styled.button`
 
 function Header() {
   const router = useRouter();
-  const { seasons, currentSeason, setCurrentSeason } = useDataContext();
+  const { activeSeasons, currentSeason, setCurrentSeason } = useDataContext();
   const { isLoggedIn, setIsLoggedIn } = useAuth();
 
+  // Check authentication status
   useEffect(() => {
-    async function fetchStatus() {
+    const fetchAuthStatus = async () => {
       try {
         const response = await fetch("/api/auth/status");
         const data = await response.json();
@@ -139,61 +159,97 @@ function Header() {
         console.error("Error fetching auth status:", err);
         setIsLoggedIn(false);
       }
-    }
-    fetchStatus();
-  }, []);
+    };
 
-  function updateCurrentSeason(e) {
-    setCurrentSeason(seasons.find((sea) => sea.id === +e.target.value));
-  }
+    fetchAuthStatus();
+  }, [setIsLoggedIn]);
 
-  async function handleLogout(e) {
-    e.preventDefault();
-    localStorage.removeItem("token");
-    await fetch("/api/logout", { method: "GET" });
-    setIsLoggedIn(false);
-    router.push("/login");
-  }
-  function handleClick() {
+  const handleSeasonChange = useCallback(
+    (e) => {
+      const selectedSeasonId = parseInt(e.target.value, 10);
+      const selectedSeason = activeSeasons.find(
+        (season) => season.id === selectedSeasonId
+      );
+
+      if (selectedSeason) {
+        setCurrentSeason(selectedSeason);
+      }
+    },
+    [activeSeasons, setCurrentSeason]
+  );
+
+  const handleLogout = useCallback(
+    async (e) => {
+      e.preventDefault();
+
+      try {
+        localStorage.removeItem("token");
+        await fetch("/api/logout", { method: "GET" });
+        setIsLoggedIn(false);
+        router.push("/login");
+      } catch (error) {
+        console.error("Logout error:", error);
+        // Still redirect even if logout request fails
+        setIsLoggedIn(false);
+        router.push("/login");
+      }
+    },
+    [setIsLoggedIn, router]
+  );
+
+  const handleLogoClick = useCallback(() => {
     router.push("/");
-  }
+  }, [router]);
+
+  const handleAdminClick = useCallback(() => {
+    router.push("/admin/adminDashboard");
+  }, [router]);
+
+  // Don't render season selector if no active seasons or current season
+  const shouldShowSeasonSelector = activeSeasons.length > 0 && currentSeason;
 
   return (
     <HeaderContainer>
-      <LogoContainer onClick={handleClick}>
+      <LogoContainer onClick={handleLogoClick}>
         <img src='/images/logo.png' alt='MTSA Logo' />
         <Title>Middle Tennessee Soccer Alliance</Title>
       </LogoContainer>
+
       <Controls>
-        <SelectWrapper>
-          <select
+        {shouldShowSeasonSelector && (
+          <StyledSelect
             name='season'
-            onChange={updateCurrentSeason}
+            onChange={handleSeasonChange}
             value={currentSeason.id}
+            aria-label='Select season'
           >
-            {seasons.map((season) => (
+            {activeSeasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {season.mtsa_name}
               </option>
             ))}
-          </select>
-        </SelectWrapper>
+          </StyledSelect>
+        )}
       </Controls>
+
       <Nav>
         <ul>
           <li>
             {isLoggedIn ? (
-              <Buttons>
+              <ButtonGroup>
                 <AuthButton
-                  onClick={() => router.push("/admin/adminDashboard")}
+                  onClick={handleAdminClick}
+                  aria-label='Go to admin dashboard'
                 >
                   Admin
                 </AuthButton>
-                <AuthButton onClick={handleLogout}>Logout</AuthButton>
-              </Buttons>
+                <AuthButton onClick={handleLogout} aria-label='Logout'>
+                  Logout
+                </AuthButton>
+              </ButtonGroup>
             ) : (
               <Link href='/login'>
-                <AuthButton>Admin Login</AuthButton>
+                <AuthButton aria-label='Admin login'>Admin Login</AuthButton>
               </Link>
             )}
           </li>

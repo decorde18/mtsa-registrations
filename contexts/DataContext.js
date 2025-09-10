@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useMemo } from "react";
 import Spinner from "@/components/Spinner";
 
 const DataContext = createContext();
@@ -35,6 +35,21 @@ export function DataProvider({ children }) {
   const useMockData =
     process.env.NODE_ENV === "development" &&
     process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
+
+  // Memoized computed values
+  const activeSeasons = useMemo(() => {
+    return data.seasons
+      .filter((season) => season.is_active === 1)
+      .sort(
+        (a, b) =>
+          new Date(b.start_date || b.created_at) -
+          new Date(a.start_date || a.created_at)
+      );
+  }, [data.seasons]);
+
+  const mostRecentActiveSeason = useMemo(() => {
+    return activeSeasons[0] || null;
+  }, [activeSeasons]);
 
   const fetchData = async (endpoint, key) => {
     try {
@@ -75,8 +90,6 @@ export function DataProvider({ children }) {
     setError(null);
 
     try {
-      // console.log("Starting data load...");
-
       const results = await Promise.allSettled(
         Object.entries(ENDPOINTS).map(async ([key, endpoint]) => {
           const result = await fetchData(endpoint, key);
@@ -101,20 +114,9 @@ export function DataProvider({ children }) {
 
       setData(newData);
 
-      // Set current season immediately after data is loaded
-      if (newData.seasons?.length && newData.leagues?.length) {
-        const current = newData.seasons.find(
-          (season) => season.id === newData.leagues[0]?.recent_season
-        );
-
-        setCurrentSeason(current);
-      }
-
       if (Object.keys(errors).length > 0) {
         setError(errors);
       }
-
-      // console.log("Data load complete:", newData);
     } catch (error) {
       console.error("Error loading data:", error);
       setError({ general: "Failed to load data" });
@@ -123,71 +125,46 @@ export function DataProvider({ children }) {
     }
   };
 
+  // Set current season when seasons data changes or when current season is null
+  useEffect(() => {
+    if (mostRecentActiveSeason && !currentSeason) {
+      setCurrentSeason(mostRecentActiveSeason);
+    }
+  }, [mostRecentActiveSeason, currentSeason]);
+
   // Load data on mount
   useEffect(() => {
     loadAllData();
   }, []);
 
-  // Setter functions for individual data types
-  const setters = {
-    setPlayers: (value) =>
-      setData((prev) => ({
-        ...prev,
-        players: typeof value === "function" ? value(prev.players) : value,
-      })),
-    setMtsaPlayers: (value) =>
-      setData((prev) => ({
-        ...prev,
-        mtsaPlayers:
-          typeof value === "function" ? value(prev.mtsaPlayers) : value,
-      })),
-    setTnsoccerPlayerSeasons: (value) =>
-      setData((prev) => ({
-        ...prev,
-        tnsoccerPlayerSeasons:
-          typeof value === "function"
-            ? value(prev.tnsoccerPlayerSeasons)
-            : value,
-      })),
-    setMissingPlayers: (value) =>
-      setData((prev) => ({
-        ...prev,
-        missingPlayers:
-          typeof value === "function" ? value(prev.missingPlayers) : value,
-      })),
-    setDivisions: (value) =>
-      setData((prev) => ({
-        ...prev,
-        divisions: typeof value === "function" ? value(prev.divisions) : value,
-      })),
-    setSeasons: (value) =>
-      setData((prev) => ({
-        ...prev,
-        seasons: typeof value === "function" ? value(prev.seasons) : value,
-      })),
-    setTeams: (value) =>
-      setData((prev) => ({
-        ...prev,
-        teams: typeof value === "function" ? value(prev.teams) : value,
-      })),
-    setLeagues: (value) =>
-      setData((prev) => ({
-        ...prev,
-        leagues: typeof value === "function" ? value(prev.leagues) : value,
-      })),
-  };
+  // Create setter functions dynamically
+  const createSetter = (key) => (value) =>
+    setData((prev) => ({
+      ...prev,
+      [key]: typeof value === "function" ? value(prev[key]) : value,
+    }));
+
+  const setters = useMemo(() => {
+    const setterMap = {};
+    Object.keys(data).forEach((key) => {
+      const setterName = `set${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+      setterMap[setterName] = createSetter(key);
+    });
+    return setterMap;
+  }, []);
 
   if (loading) {
     return <Spinner />;
   }
 
-  // console.log(data);
   return (
     <DataContext.Provider
       value={{
         // Data
         ...data,
         currentSeason,
+        activeSeasons,
+        mostRecentActiveSeason,
 
         // State
         loading,
@@ -205,6 +182,7 @@ export function DataProvider({ children }) {
     </DataContext.Provider>
   );
 }
+
 export function useDataContext() {
   const context = useContext(DataContext);
   if (!context) {

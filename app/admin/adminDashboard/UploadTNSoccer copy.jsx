@@ -311,7 +311,6 @@ function UploadTNSoccer() {
     });
   };
 
-  // Updated handleSubmit function with improved bulk processing
   const handleSubmit = async () => {
     if (!currentSeason) {
       toast.error("No current season selected");
@@ -322,26 +321,13 @@ function UploadTNSoccer() {
       setIsProcessing(true);
       toast.loading("Processing records...", { id: "submit-processing" });
 
-      // Helper function to strip unique_id from player data
-      const stripUniqueId = (playerData) => {
-        const { unique_id, tnSoccer, ...cleanData } = playerData;
-        return cleanData;
-      };
-
-      // Step 1: Organize players by what needs to happen
+      // Step 1: Create new players and identify players needing player_id updates
       const uniqueIds = new Set();
       const newPlayersToCreate = [];
       const playersToUpdate = [];
-      const allTnSoccerData = []; // Store all tnSoccer data with unique_id for later
 
       for (const player of uploads) {
         if (!player.first_name || !player.last_name) continue;
-
-        // Store tnSoccer data for later processing
-        allTnSoccerData.push({
-          unique_id: player.unique_id,
-          tnSoccer: player.tnSoccer,
-        });
 
         if (!uniqueIds.has(player.unique_id)) {
           uniqueIds.add(player.unique_id);
@@ -350,8 +336,8 @@ function UploadTNSoccer() {
           );
 
           if (!existingPlayer) {
-            // New player - strip unique_id before adding to create list
-            newPlayersToCreate.push(stripUniqueId(player));
+            // New player - create it
+            newPlayersToCreate.push(player);
           } else if (!existingPlayer.player_id && player.player_id) {
             // Existing player missing player_id - update it
             playersToUpdate.push({
@@ -362,74 +348,31 @@ function UploadTNSoccer() {
         }
       }
 
+      // Create new players (one by one since no batch create exists)
       let createdPlayers = [];
-      let updatedPlayerMap = new Map(); // Track updated players
-
-      // Step 2: Bulk create new players
       if (newPlayersToCreate.length > 0) {
         toast.loading(`Creating ${newPlayersToCreate.length} new players...`, {
           id: "creating-players",
         });
 
-        try {
-          // Try bulk insert first
-          const response = await fetch("/api/players", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(newPlayersToCreate),
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        for (const player of newPlayersToCreate) {
+          try {
+            const result = await createRecord("players", player);
+            createdPlayers.push(result.data || { ...player, id: result.id });
+          } catch (error) {
+            console.error("Error creating player:", error);
+            toast.error(
+              `Failed to create player: ${player.first_name} ${player.last_name}`
+            );
           }
-
-          const result = await response.json();
-
-          // Note: You'll need to modify your API to return the created records with IDs
-          // For now, we'll need to fetch them or modify the API response
-          toast.success(`Created ${newPlayersToCreate.length} new players`, {
-            id: "creating-players",
-          });
-
-          // We need the created players with their new IDs for the next step
-          // This requires either:
-          // 1. Modifying your API to return created records, or
-          // 2. Re-fetching players from context, or
-          // 3. Using a different approach
-
-          // Option 3: Since we need the IDs, let's do individual creates for now
-          // but we could optimize this by modifying the API
-          throw new Error("Falling back to individual creates to get IDs");
-        } catch (error) {
-          console.log(
-            "Bulk create failed, using individual creates:",
-            error.message
-          );
-
-          // Fallback: Create individually to get IDs
-          for (const playerData of newPlayersToCreate) {
-            try {
-              const result = await createRecord("players", playerData);
-              const createdPlayer = result.data || {
-                ...playerData,
-                id: result.id,
-              };
-              createdPlayers.push(createdPlayer);
-            } catch (createError) {
-              console.error("Error creating individual player:", createError);
-              toast.error(
-                `Failed to create player: ${playerData.first_name} ${playerData.last_name}`
-              );
-            }
-          }
-
-          toast.success(`Created ${createdPlayers.length} new players`, {
-            id: "creating-players",
-          });
         }
+
+        toast.success(`Created ${createdPlayers.length} new players`, {
+          id: "creating-players",
+        });
       }
 
-      // Step 3: Bulk update existing players with missing player_ids
+      // Update existing players with missing player_ids (batch update)
       if (playersToUpdate.length > 0) {
         toast.loading(`Updating ${playersToUpdate.length} player IDs...`, {
           id: "updating-players",
@@ -437,17 +380,9 @@ function UploadTNSoccer() {
 
         try {
           await updateRecords("players", playersToUpdate);
-
-          // Track updated players for mapping later
-          playersToUpdate.forEach((update) => {
-            updatedPlayerMap.set(update.id, update);
-          });
-
           toast.success(
             `Updated ${playersToUpdate.length} players with TN Soccer IDs`,
-            {
-              id: "updating-players",
-            }
+            { id: "updating-players" }
           );
         } catch (error) {
           console.error("Error updating players:", error);
@@ -457,26 +392,15 @@ function UploadTNSoccer() {
         }
       }
 
-      // Step 4: Build complete players list and create season registrations
-      const allAvailablePlayers = [...players, ...createdPlayers];
+      // Step 2: Build updated players list including newly created ones
+      const allPlayers = [...players, ...createdPlayers];
 
-      // Apply updates to existing players in our local list
-      const updatedPlayers = allAvailablePlayers.map((player) => {
-        const update = updatedPlayerMap.get(player.id);
-        return update ? { ...player, ...update } : player;
-      });
-
-      // Step 5: Prepare TN Soccer season registrations
+      // Step 3: Create TN Soccer season registrations in batch
       const seasonRegistrationsToCreate = [];
 
-      for (const { unique_id, tnSoccer } of allTnSoccerData) {
-        const matchedPlayer = updatedPlayers.find(
-          (p) => p.unique_id === unique_id
-        );
-        if (!matchedPlayer) {
-          console.warn(`No matched player found for unique_id: ${unique_id}`);
-          continue;
-        }
+      for (const { tnSoccer, unique_id } of uploads) {
+        const matchedPlayer = allPlayers.find((p) => p.unique_id === unique_id);
+        if (!matchedPlayer) continue;
 
         const alreadyExists = tnsoccerPlayerSeasons.some(
           (tp) =>
@@ -493,27 +417,23 @@ function UploadTNSoccer() {
         }
       }
 
-      // Step 6: Bulk create season registrations
+      // Step 3: Create TN Soccer season registrations (one by one)
       if (seasonRegistrationsToCreate.length > 0) {
         toast.loading(
           `Creating ${seasonRegistrationsToCreate.length} season registrations...`,
           { id: "creating-registrations" }
         );
 
+        let successCount = 0;
         try {
           await createRecord(
             "tnsoccerPlayerSeasons",
             seasonRegistrationsToCreate
           );
-          toast.success(
-            `Created ${seasonRegistrationsToCreate.length} season registrations`,
-            {
-              id: "creating-registrations",
-            }
-          );
+          toast.success("All registrations created successfully.");
         } catch (batchError) {
           console.warn(
-            "Batch registration insert failed, falling back to individual records..."
+            "Batch insert failed, falling back to individual records..."
           );
 
           let successCount = 0;
@@ -522,17 +442,16 @@ function UploadTNSoccer() {
               await createRecord("tnsoccerPlayerSeasons", registration);
               successCount++;
             } catch (error) {
-              console.error("Failed to create individual registration:", error);
               toast.error(
                 `Failed to create registration for player ID: ${registration.player_id}`
               );
             }
           }
-
-          toast.success(`Created ${successCount} season registrations`, {
-            id: "creating-registrations",
-          });
         }
+
+        toast.success(`Created ${successCount} season registrations`, {
+          id: "creating-registrations",
+        });
       }
 
       // Success - reset form
